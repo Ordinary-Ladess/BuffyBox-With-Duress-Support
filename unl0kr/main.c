@@ -361,7 +361,45 @@ static void textarea_ready_cb(lv_event_t *event) {
     print_password_and_exit(lv_event_get_target(event));
 }
 
+
+
+/*
+###############################################################
+############################################################### Intentional bookmarking banner, otherwise my eyes go square trying to find where I left off.
+###############################################################
+Modified function by ya ordinary ladess, the Jackieboy themself.
+*/
+
 static void print_password_and_exit(lv_obj_t *textarea) {
+
+        /* Ya Jackieboy's changes*/
+        /* I paste this in from my systemd agent version unl0kr-agent.c */
+        char *password = lv_textarea_get_text(textarea); /* I guess if printf is calling this directly, I'll point at it in password */
+        const char *cDuressPassword = "4321"; /* Hard code for Proof of concept for now */
+        /*Does lv_text_area_get_text() produce nulls? Just in case a spurious null, gonna make sure password is nonzero*/
+        if (password && strcmp(password, cDuressPassword) == 0){
+            system("/bin/sh /usr/bin/duress.sh > /dev/null 2>&1 &"); /* Yeah, lazy me heh? Well, the script can do heavy lifting wiping partitions, copying the antitheft initramfs over the current one, screen drawing and final reboot for now */
+            /* decoy_screen(); */             /* Todo: in future do animations to pretend we're still checking security, for efficiency */
+
+
+            /* Pasted from original code below, but changed rect to rect_loop to distinguish purpose*/
+            lv_obj_t *rect_loop = lv_obj_create(lv_screen_active());
+            lv_obj_set_size(rect_loop, LV_PCT(100), LV_PCT(100));
+            lv_obj_set_pos(rect_loop, 0, 0);
+            lv_obj_set_style_bg_opa(rect_loop, LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_bg_color(rect_loop , lv_color_hex(get_theme(is_alternate_theme)->window.bg_color), LV_PART_MAIN);
+            lv_refr_now(lv_display_get_default()); /* Force the screen to be drawn */
+
+            /* Gonna use a while loop sleep forever now the screen is cleared, the program is forced to end when the script forces reboot */
+            while(1){
+                lv_refr_now(lv_display_get_default()); /* Force the screen to be drawn each iteration */
+                lv_timer_handler()                     /* to avoid potential issues such as a watchdog timer*/
+		usleep(10000); 
+            }
+        }
+        /* Ya Jackieboy's changes end here*/
+
+
     /* Print the password to STDOUT */
     printf(cli_opts.newline? "%s\n" : "%s", lv_textarea_get_text(textarea));
 
