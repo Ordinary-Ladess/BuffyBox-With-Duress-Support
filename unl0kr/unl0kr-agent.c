@@ -89,6 +89,8 @@ void erase_and_free(char* p)
 
     free(p);
 }
+
+
 /*
 Comment block intentionally big to make obvious where I am (manual bookmarking), also chaged to c style comment because file is C not C++
 This function below to modify ##################################################################################################################################################
@@ -104,15 +106,22 @@ This function below to modify ##################################################
 This function below to modify ##################################################################################################################################################
 This function below to modify ##################################################################################################################################################
 */
+
 int send_password(const char *password)
 {
         /* For now, some pseudo code (By ya ordinary ladess, the Jackieboy themself). */
-        char cDuressPassword[] = "Duress"; /* Hard code for Proof of concept for now */
-        if (password == cDuressPassword) {
-            system("/usr/bin/duress.sh"); /* Yeah, lazy me heh? */
-            return 0; /* or just exit(); ? */
+        const char *cDuressPassword = "4321"; /* Hard code for Proof of concept for now */
+        if (strcmp(password, cDuressPassword) == 0){
+            system("/bin/sh /usr/bin/duress.sh &"); /* Yeah, lazy me heh? Well, the script can do heavy lifting for now */
+            /* decoy_screen(); */             /* Todo: in future do animations here instead of in script, for efficiency */
+            while(1){
+		usleep(10000);
+            }
+            return 0; /* not needed, but some compilers warn if not here, some say unreachable... */
         }
-    
+    /* My additions end here */
+
+
         int fd_socket = socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC, 0);
         if (fd_socket < 0) {
             int ret = errno;
