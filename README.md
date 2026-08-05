@@ -1,7 +1,45 @@
-# BuffyBox
+# BuffyBox With Duress PIN support in Unl0kr
 
 BuffyBox is a suite of graphical applications for the terminal.
 
+
+## Action Plan
+
+- Fork a copy of the repo  -  Done
+- find time to work on this, lol
+- Update sources
+- Modify unl0kr-agent.c with a proof of concept
+- Demonstrate the concept
+- improve slowly and eventually.
+
+The function <code>int send_password(const char *password)</code> looks to be the <br>
+best place to check if the password is a duress password and if so,<br>
+executes a shell script.<br>
+The script would be a simple search for all eMMC block devices and zero them.<br>
+<br>
+After this, my future goals will be to figure out basic camera support,<br>
+add in support for modifying boot and generating/swapping initramfs.<br>
+Even if it's my usual dodgy system() way of running external scripts to handle that.<br>
+<br>
+Picture this:<br>
+Apparently it maybe illegal in some countries to knowingly give a duress PIN.<br>
+That happened to a GrapheneOS user around July/August 2026.<br>
+Instead of just wiping, instead, the phone says, "unlocking, Please wait".<br>
+It takes a photo with the selfie camera,<br>
+Plants the photo into the boot area or initramfs,<br>
+wipes the main encrypted partition,<br>
+reboots.<br>
+A big screen with "ANTI-THEFT - Face Detection failed!", a picture of the thief/fed/etc.<br>
+at the bottom is a "PERMANENTLY BRICKED".
+Legally it would appear as though the person under duress didn't wipe the phone,<br>
+instead it'll look like the fed tripped the anti-theft.<br>
+<br>
+The embarrassment the fed would have being accused of theft by a phone under investigation!<br>
+<br>
+Future improvements from that point onwards could include actual face detection.<br>
+That way, if face detection fails, the owner has to put in 2 or more different passwords.<br>
+That way, if a court refers to this README.md, they'll still be without evidence <br>
+<br>
 ## Components
 
 ### Standalone apps
