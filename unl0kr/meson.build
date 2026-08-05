@@ -1,86 +1,75 @@
 # Copyright 2021 Clayton Craft
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-
-project(
-  'unl0kr',
-  'c',
-  version: '3.0.0',
-  default_options: 'warning_level=3',
-  meson_version: '>=0.53.0'
+unl0kr_sources = files(
+    'command_line.c',
+    'config.c',
+    'main.c',
+    'sq2lv_layouts.c',
 )
-
-add_project_arguments('-DUL_VERSION="@0@"'.format(meson.project_version()), language: ['c'])
-
-unl0kr_sources = [
-  'backends.c',
-  'command_line.c',
-  'config.c',
-  'main.c',
-  'sq2lv_layouts.c',
-  'terminal.c',
-]
-
-shared_sources = [
-  '../shared/cursor/cursor.c',
-  '../shared/fonts/font_32.c',
-  '../shared/config.c',
-  '../shared/indev.c',
-  '../shared/log.c',
-  '../shared/theme.c',
-  '../shared/themes.c',
-]
-
-squeek2lvgl_sources = [
-  '../squeek2lvgl/sq2lv.c',
-]
-
-man_files = [
-	'doc/unl0kr.1',
-	'doc/unl0kr.conf.5',
-]
 
 unl0kr_dependencies = [
-  dependency('inih'),
-  dependency('libinput'),
-  dependency('libudev'),
-  dependency('xkbcommon'),
+    common_dependencies,
+    depxkbcommon
 ]
 
-libdrm_dep = dependency('libdrm', required: get_option('with-drm'))
-if libdrm_dep.found()
-  unl0kr_dependencies += [libdrm_dep]
-  add_project_arguments('-DLV_USE_LINUX_DRM=1', language: ['c'])
+unl0kr_args = []
+
+if get_option('lvgl_backends').contains('framebuffer')
+    unl0kr_args += '-DLV_USE_LINUX_FBDEV=1'
+else
+    unl0kr_args += '-DLV_USE_LINUX_FBDEV=0'
 endif
 
-lvgl_sources = run_command('../find-lvgl-sources.sh', '../lvgl', check: true).stdout().strip().split('\n')
+if get_option('lvgl_backends').contains('drm')
+    unl0kr_dependencies += dependency('libdrm')
+    unl0kr_args += '-DLV_USE_LINUX_DRM=1'
+else
+    unl0kr_args += '-DLV_USE_LINUX_DRM=0'
+endif
 
-install_data(sources: 'unl0kr.conf', install_dir : get_option('sysconfdir'))
+if get_option('lvgl_backends').contains('sdl')
+    unl0kr_dependencies += dependency('sdl2')
+    unl0kr_args += '-DLV_USE_SDL=1'
+else
+    unl0kr_args += '-DLV_USE_SDL=0'
+endif
 
-executable(
-  'unl0kr',
-  sources: unl0kr_sources + shared_sources + squeek2lvgl_sources + lvgl_sources,
-  include_directories: ['..'],
-  dependencies: unl0kr_dependencies,
-  install: true
+executable('unl0kr',
+    include_directories: common_include_dirs,
+    sources: unl0kr_sources + shared_sources + shared_sources_ul_f0 + squeek2lvgl_sources + lvgl_sources,
+    dependencies: unl0kr_dependencies,
+    c_args: unl0kr_args,
+    install: true,
+    install_tag: 'unl0kr'
 )
 
-scdoc = dependency('scdoc')
-scdoc_prog = find_program(scdoc.get_pkgconfig_variable('scdoc'), native : true)
-sh = find_program('sh', native : true)
-foreach file : man_files
-	filename = file + '.scd'
-	section = file.split('.')[-1]
-	topic = file.split('.' + section)[-2].split('/')[-1]
-	output = '@0@.@1@'.format(topic, section)
+install_data('unl0kr.conf',
+    install_dir: get_option('sysconfdir'),
+    install_tag: 'unl0kr'
+)
 
-	custom_target(
-		output,
-		input : filename,
-		output : output,
-		capture : true,
-		command : [sh, '-c', scdoc_prog.path() + ' < @INPUT@'],
-		install : true,
-		install_dir : get_option('mandir') / 'man' + section
-	)
-endforeach
+if get_option('systemd')
+    executable('unl0kr-agent',
+        sources: files('unl0kr-agent.c'),
+        dependencies: depinih,
+        c_args: '-DUNL0KR_BINARY="@0@"'.format(get_option('prefix') / get_option('bindir') / 'unl0kr'),
+        install: true,
+        install_dir: get_option('libexecdir'),
+        install_tag: 'unl0kr'
+    )
+
+    install_data('unl0kr-agent.path',
+        install_dir: systemd_system_unit_dir,
+        install_tag: 'unl0kr'
+    )
+
+    configure_file(
+        configuration: {'LIBEXECDIR': get_option('prefix') / get_option('libexecdir')},
+        input: 'unl0kr-agent.service.in',
+        output: 'unl0kr-agent.service',
+        install: true,
+        install_dir: systemd_system_unit_dir,
+        install_tag: 'unl0kr'
+    )
+endif

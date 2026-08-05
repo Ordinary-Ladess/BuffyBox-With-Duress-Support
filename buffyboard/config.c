@@ -40,7 +40,17 @@ static int parsing_handler(void* user_data, const char* section, const char* key
 static int parsing_handler(void* user_data, const char* section, const char* key, const char* value) {
     bb_config_opts *opts = (bb_config_opts *)user_data;
 
-    if (strcmp(section, "theme") == 0) {
+    if (strcmp(section, "keyboard") == 0) {
+        if (strcmp(key, "haptic_feedback") == 0) {
+            if (bbx_config_parse_bool(value, &(opts->keyboard.haptic_feedback))) {
+                return 1;
+            }
+        } else if (strcmp(key, "sticky_shift") == 0) {
+            if (bbx_config_parse_bool(value, &(opts->keyboard.sticky_shift))) {
+                return 1;
+            }
+        }
+    } else if (strcmp(section, "theme") == 0) {
         if (strcmp(key, "default") == 0) {
             bbx_themes_theme_id_t id = bbx_themes_find_theme_with_name(value);
             if (id != BBX_THEMES_THEME_NONE) {
@@ -63,6 +73,10 @@ static int parsing_handler(void* user_data, const char* section, const char* key
             if (bbx_config_parse_bool(value, &(opts->quirks.fbdev_force_refresh))) {
                 return 1;
             }
+        } else if (strcmp(key, "ignore_unused_terminals") == 0) {
+            if (bbx_config_parse_bool(value, &(opts->quirks.ignore_unused_terminals))) {
+                return 1;
+            }
         }
     }
 
@@ -76,10 +90,13 @@ static int parsing_handler(void* user_data, const char* section, const char* key
  */
 
 void bb_config_init_opts(bb_config_opts *opts) {
-    opts->theme.default_id = BBX_THEMES_THEME_BREEZY_DARK;
+    opts->keyboard.haptic_feedback = true;
+    opts->keyboard.sticky_shift = true;
+    opts->theme.default_id = BBX_THEMES_THEME_BREEZY_LIGHT;
     opts->input.pointer = true;
     opts->input.touchscreen = true;
     opts->quirks.fbdev_force_refresh = false;
+    opts->quirks.ignore_unused_terminals = true;
 }
 
 void bb_config_parse_directory(const char *path, bb_config_opts *opts) {

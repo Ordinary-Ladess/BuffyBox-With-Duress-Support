@@ -7,14 +7,15 @@
 #ifndef UL_CONFIG_H
 #define UL_CONFIG_H
 
-#include "backends.h"
 
+#include "../shared/backends.h"
 #include "../shared/themes.h"
 
 #include "sq2lv_layouts.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <xkbcommon/xkbcommon.h>
 
 /**
  * General options
@@ -23,7 +24,7 @@ typedef struct {
     /* If true, use animations */
     bool animations;
     /* Backend to use */
-    ul_backends_backend_id_t backend;
+    bbx_backends_backend_id_t backend;
     /* Timeout (in seconds) - once elapsed, the device will shutdown. 0 (default) to disable */
     uint16_t timeout;
 } ul_config_opts_general;
@@ -38,6 +39,8 @@ typedef struct {
     sq2lv_layout_id_t layout_id;
     /* If true, display key popovers on press */
     bool popovers;
+    /* If true, vibrate on key presses */
+    bool haptic_feedback;
 } ul_config_opts_keyboard;
 
 /**
@@ -98,6 +101,8 @@ typedef struct {
     ul_config_opts_theme theme;
     /* Options related to input devices */
     ul_config_opts_input input;
+    /* Options to create a keymap for hardware keyboards */
+    struct xkb_rule_names hw_keyboard;
     /* Options related to (normally unneeded) quirks */
     ul_config_opts_quirks quirks;
 } ul_config_opts;

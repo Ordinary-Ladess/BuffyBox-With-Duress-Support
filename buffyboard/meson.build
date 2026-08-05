@@ -1,51 +1,50 @@
 # Copyright 2021 Johannes Marbach
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-
-project(
-  'buffyboard',
-  'c',
-  version: '3.0.0',
-  default_options: 'warning_level=1',
-  meson_version: '>=0.53.0'
+buffyboard_sources = files(
+    'command_line.c',
+    'config.c',
+    'main.c',
+    'sq2lv_layouts.c',
+    'terminal.c',
+    'uinput_device.c'
 )
 
-add_project_arguments('-DBB_VERSION="@0@"'.format(meson.project_version()), language: ['c'])
-
-buffyboard_sources = [
-  'command_line.c',
-  'config.c',
-  'main.c',
-  'sq2lv_layouts.c',
-  'terminal.c',
-  'uinput_device.c',
+buffyboard_dependencies = [
+    common_dependencies
 ]
 
-shared_sources = [
-  '../shared/cursor/cursor.c',
-  '../shared/fonts/font_32.c',
-  '../shared/config.c',
-  '../shared/indev.c',
-  '../shared/log.c',
-  '../shared/theme.c',
-  '../shared/themes.c',
+buffyboard_args = [
+    '-DBBX_APP_BUFFYBOARD'
 ]
 
-squeek2lvgl_sources = [
-  '../squeek2lvgl/sq2lv.c',
-]
-
-lvgl_sources = run_command('../find-lvgl-sources.sh', '../lvgl', check: true).stdout().strip().split('\n')
-
-executable(
-  'buffyboard',
-  sources: buffyboard_sources + shared_sources + squeek2lvgl_sources + lvgl_sources,
-  include_directories: ['..'],
-  dependencies: [
-    dependency('inih'),
-    dependency('libinput'),
-    dependency('libudev'),
-    meson.get_compiler('c').find_library('m', required: false),
-  ],
-  install: true
+executable('buffyboard',
+    include_directories: common_include_dirs,
+    sources: buffyboard_sources + shared_sources + squeek2lvgl_sources + lvgl_sources,
+    dependencies: buffyboard_dependencies,
+    c_args: buffyboard_args,
+    install: true,
+    install_tag: 'buffyboard'
 )
+
+install_data('buffyboard.conf',
+    install_dir: get_option('sysconfdir'),
+    install_tag: 'buffyboard'
+)
+
+if get_option('systemd')
+    configure_file(
+        configuration: {'bindir': get_option('prefix') / get_option('bindir')},
+        input: 'buffyboard.service.in',
+        output: 'buffyboard.service',
+        install: true,
+        install_dir: systemd_system_unit_dir,
+        install_tag: 'buffyboard'
+    )
+
+    install_data('getty-buffyboard.conf',
+        rename: 'buffyboard.conf',
+        install_dir: systemd_system_unit_dir / 'getty@.service.d',
+        install_tag: 'buffyboard'
+    )
+endif

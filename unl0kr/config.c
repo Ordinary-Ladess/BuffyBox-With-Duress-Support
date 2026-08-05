@@ -46,8 +46,8 @@ static int parsing_handler(void* user_data, const char* section, const char* key
                 return 1;
             }
         } else if (strcmp(key, "backend") == 0) {
-            ul_backends_backend_id_t id = ul_backends_find_backend_with_name(value);
-            if (id != UL_BACKENDS_BACKEND_NONE) {
+            bbx_backends_backend_id_t id = bbx_backends_find_backend_with_name(value);
+            if (id != BBX_BACKENDS_BACKEND_NONE) {
                 opts->general.backend = id;
                 return 1;
             }
@@ -69,6 +69,10 @@ static int parsing_handler(void* user_data, const char* section, const char* key
             }
         } else if (strcmp(key, "popovers") == 0) {
             if (bbx_config_parse_bool(value, &(opts->keyboard.popovers))) {
+                return 1;
+            }
+        } else if (strcmp(key, "haptic_feedback") == 0) {
+            if (bbx_config_parse_bool(value, &(opts->keyboard.haptic_feedback))) {
                 return 1;
             }
         }
@@ -112,6 +116,23 @@ static int parsing_handler(void* user_data, const char* section, const char* key
                 return 1;
             }
         }
+    } else if (strcmp(section, "hardware keyboard") == 0) {
+        if (strcmp(key, "rules") == 0) {
+            opts->hw_keyboard.rules = strdup(value);
+            return 1;
+        } else if (strcmp(key, "model") == 0) {
+            opts->hw_keyboard.model = strdup(value);
+            return 1;
+        } else if (strcmp(key, "layout") == 0) {
+            opts->hw_keyboard.layout = strdup(value);
+            return 1;
+        } else if (strcmp(key, "variant") == 0) {
+            opts->hw_keyboard.variant = strdup(value);
+            return 1;
+        } else if (strcmp(key, "options") == 0) {
+            opts->hw_keyboard.options = strdup(value);
+            return 1;
+        }
     } else if (strcmp(section, "quirks") == 0) {
         if (strcmp(key, "fbdev_force_refresh") == 0) {
             if (bbx_config_parse_bool(value, &(opts->quirks.fbdev_force_refresh))) {
@@ -138,19 +159,25 @@ static int parsing_handler(void* user_data, const char* section, const char* key
  */
 
 void ul_config_init_opts(ul_config_opts *opts) {
-    opts->general.animations = false;
-    opts->general.backend = ul_backends_backends[0] == NULL ? UL_BACKENDS_BACKEND_NONE : 0;
+    opts->general.animations = true;
+    opts->general.backend = 0;
     opts->general.timeout = 0;
     opts->keyboard.autohide = true;
     opts->keyboard.layout_id = SQ2LV_LAYOUT_US;
     opts->keyboard.popovers = true;
+    opts->keyboard.haptic_feedback = true;
     opts->textarea.obscured = true;
     opts->textarea.bullet = LV_SYMBOL_BULLET;
-    opts->theme.default_id = BBX_THEMES_THEME_BREEZY_DARK;
-    opts->theme.alternate_id = BBX_THEMES_THEME_BREEZY_LIGHT;
+    opts->theme.default_id = BBX_THEMES_THEME_BREEZY_LIGHT;
+    opts->theme.alternate_id = BBX_THEMES_THEME_BREEZY_DARK;
     opts->input.keyboard = true;
     opts->input.pointer = true;
     opts->input.touchscreen = true;
+    opts->hw_keyboard.rules = NULL;
+    opts->hw_keyboard.model = NULL;
+    opts->hw_keyboard.layout = NULL;
+    opts->hw_keyboard.variant = NULL;
+    opts->hw_keyboard.options = NULL;
     opts->quirks.fbdev_force_refresh = false;
     opts->quirks.terminal_prevent_graphics_mode = false;
     opts->quirks.terminal_allow_keyboard_input = false;

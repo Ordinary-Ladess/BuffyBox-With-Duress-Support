@@ -49,9 +49,12 @@ Unl0kr values the CRYPTTAB_TRIED variable. Upon completion, the entered
 password is printed to STDOUT. All other output happens on STDERR.
 
 Mandatory arguments to long options are mandatory for short options too.
+  -m, --message             A message that will be displayed to a user
   -C, --config-override     Path to a config override file. Can be supplied
                             multiple times. Config files are merged in the
                             following order:
+                            * /usr/share/unl0kr/unl0kr.conf
+                            * /usr/share/unl0kr/unl0kr.conf.d/* (alphabetically)
                             * /etc/unl0kr.conf
                             * /etc/unl0kr.conf.d/* (alphabetically)
                             * Override files (in supplied order)
@@ -60,6 +63,7 @@ Mandatory arguments to long options are mandatory for short options too.
                             pixels and vertically by Y pixels
   -d  --dpi=N               Override the display's DPI value
   -h, --help                Print this message and exit
+  -n                        Do not append a newline character to a password
   -v, --verbose             Enable more detailed logging output on STDERR
   -V, --version             Print the unl0kr version and exit
 ```
@@ -80,30 +84,6 @@ For an example configuration file, see [unl0kr.conf].
 - evdev kernel module
 - [scdoc] (for generating the man page)
 
-## Building & running
-
-Some of unl0kr's dependencies are included as git submodules in this repository. You can clone the repository and initialise the submodules with
-
-```
-$ git clone https://gitlab.com/postmarketOS/buffybox.git
-$ cd buffybox
-$ git submodule init
-$ git submodule update
-```
-
-When pulling changes from the remote later, either use `git pull --recurse-submodules` or manually run `git submodule update` as needed after pulling.
-
-Once you have the sources, you can build the app and run it in a VT. Unless your user account has special privileges, `sudo` will be needed to access input device files.
-
-```
-$ meson _build
-$ meson compile -C _build
-$ sudo chvt 2
-$ sudo ./_build/unl0kr
-```
-
-With meson <0\.55 use `ninja` instead of `meson compile`\.
-
 ## Valgrind
 
 > Using C without Valgrind is like skydiving without a parachute.
@@ -111,7 +91,7 @@ With meson <0\.55 use `ninja` instead of `meson compile`\.
 To be able to use Valgrind, add `default_options: ['optimization=g']` in the `project` section of `meson.build` and rebuild. Afterwards you can run the application with Valgrind's leaks check enabled via
 
 ```
-sudo valgrind --leak-check=yes ./_build/unl0kr
+sudo valgrind --leak-check=yes ../_build/unl0kr/unl0kr
 ```
 
 ## Backends
@@ -137,17 +117,15 @@ Unl0kr uses [squeekboard layouts] converted to C via [squeek2lvgl]. To regenerat
 $ ./regenerate-layouts.sh
 ```
 
-from the root of the repository.
-
 ## Generating screenshots
 
-To generate screenshots in a variety of common sizes, build unl0kr and then run
+To generate screenshots in a variety of common sizes, install [fbcat], build unl0kr and then run
 
 ```
-$ sudo ./regenerate-screenshots _build/unl0kr
+$ sudo ./regenerate-screenshots ../_build/unl0kr/unl0kr
 ```
 
-where `_build/unl0kr` is the location of the unl0kr binary. Note that you may have to adapt some of the settings inside the script depending on the device you're using to generate the screenshots.
+where `../_build/unl0kr/unl0kr` is the location of the unl0kr binary.
 
 ## Screen recording
 
@@ -164,6 +142,7 @@ The [lv_port_linux_frame_buffer] project served as a starting point for the code
 [LVGL]: https://lvgl.io
 [adjust]: https://fontawesome.com/v5.15/icons/adjust?style=solid
 [arrow-alt-circle-up]: https://fontawesome.com/v5.15/icons/arrow-alt-circle-up?style=solid
+[fbcat]: https://github.com/jwilk/fbcat
 [inih]: https://github.com/benhoyt/inih
 [libinput]: https://gitlab.freedesktop.org/libinput/libinput
 [libudev]: https://github.com/systemd/systemd/tree/main/src/libudev
@@ -173,9 +152,9 @@ The [lv_port_linux_frame_buffer] project served as a starting point for the code
 [lvgl]: https://github.com/lvgl/lvgl
 [online font converter]: https://lvgl.io/tools/fontconverter
 [osk-sdl]: https://gitlab.com/postmarketOS/osk-sdl
-[package-arch]: https://aur.archlinux.org/packages/unl0kr
+[package-arch]: https://aur.archlinux.org/packages/buffybox
 [package-debian]: https://tracker.debian.org/pkg/unl0kr
-[package-pmos]: https://gitlab.com/postmarketOS/pmaports/-/tree/master/main/unl0kr
+[package-pmos]: https://gitlab.postmarketos.org/postmarketOS/pmaports/-/tree/master/main/unl0kr
 [scdoc]: https://git.sr.ht/~sircmpwn/scdoc
 [screenshots]: ./screenshots
 [squeek2lvgl]: ../squeek2lvgl

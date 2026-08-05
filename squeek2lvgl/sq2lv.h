@@ -7,7 +7,7 @@
 #ifndef SQ2LV_H
 #define SQ2LV_H
 
-#include "../sq2lv_layouts.h"
+#include "sq2lv_layouts.h"
 
 /* Key attributes */
 #define SQ2LV_CTRL_NON_CHAR     (LV_BUTTONMATRIX_CTRL_CLICK_TRIG | LV_BUTTONMATRIX_CTRL_CHECKED)
@@ -37,7 +37,7 @@ void sq2lv_switch_layout(lv_obj_t *keyboard, sq2lv_layout_id_t layout_id);
  * @param btn_id button index corresponding to the key
  * @return true if a layer switch would happen if the key is pressed, false otherwise
  */
-bool sq2lv_is_layer_switcher(lv_obj_t *keyboard, uint16_t btn_id);
+bool sq2lv_is_layer_switcher(lv_obj_t *keyboard, uint32_t btn_id);
 
 /**
  * Attempt to perform a layer switch after pressing a key in the current layer.
@@ -46,7 +46,14 @@ bool sq2lv_is_layer_switcher(lv_obj_t *keyboard, uint16_t btn_id);
  * @param btn_id button index corresponding to the pressed key
  * @return true if a layer switch was performed, false otherwise
  */
-bool sq2lv_switch_layer(lv_obj_t *keyboard, uint16_t btn_id);
+bool sq2lv_switch_layer(lv_obj_t *keyboard, uint32_t btn_id);
+
+/**
+ * A toggle between the first and the fourth layer.
+ *
+ * @param keyboard keyboard widget
+ */
+void sq2lv_toggle_fourth_layer(lv_obj_t *keyboard);
 
 /**
  * Check if a key is a modifier in the current layer.
@@ -55,7 +62,7 @@ bool sq2lv_switch_layer(lv_obj_t *keyboard, uint16_t btn_id);
  * @param btn_id button index corresponding to the key
  * @return true if the key is a modifier, false otherwise
  */
-bool sq2lv_is_modifier(lv_obj_t *keyboard, uint16_t btn_id);
+bool sq2lv_is_modifier(lv_obj_t *keyboard, uint32_t btn_id);
 
 /**
  * Get the button indexes for all modifier keys in the current layer.
@@ -64,7 +71,7 @@ bool sq2lv_is_modifier(lv_obj_t *keyboard, uint16_t btn_id);
  * @param num_modifiers pointer to an integer into which the number of modifiers will be written
  * @return pointer to the array of button indexes corresponding to modifier keys
  */
-int *sq2lv_get_modifier_indexes(lv_obj_t *keyboard, int *num_modifiers);
+const uint32_t *sq2lv_get_modifier_indexes(lv_obj_t *keyboard, uint32_t *num_modifiers);
 
 #if SQ2LV_SCANCODES_ENABLED
 /**
@@ -75,7 +82,7 @@ int *sq2lv_get_modifier_indexes(lv_obj_t *keyboard, int *num_modifiers);
  * @param num_scancodes pointer to an integer into which the number of scancodes will be written
  * @return pointer into an array of scancodes at the appropriate index
  */
-const int * const sq2lv_get_scancodes(lv_obj_t *keyboard, uint16_t btn_id, int *num_scancodes);
+const int *sq2lv_get_scancodes(lv_obj_t *keyboard, uint32_t btn_id, int *num_scancodes);
 #endif /* SQ2LV_SCANCODES_ENABLED */
 
 #endif /* SQ2LV_H */

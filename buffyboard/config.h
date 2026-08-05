@@ -12,6 +12,17 @@
 #include "sq2lv_layouts.h"
 
 /**
+ * Options related to the keyboard
+ */
+typedef struct {
+    /* If true, vibrate on key presses */
+    bool haptic_feedback;
+    /* If true, remain in uppercase mode until shift is pressed again.
+     * If false, switch back to lowercase after a non-modifier key is pressed. */
+    bool sticky_shift;
+} bb_config_opts_keyboard;
+
+/**
  * Options related to the theme
  */
 typedef struct {
@@ -35,12 +46,16 @@ typedef struct {
 typedef struct {
     /* If true and using the framebuffer backend, force a refresh on every draw operation */
     bool fbdev_force_refresh;
+    /* If true, do not automatically update the layout of new terminals and wait for SIGUSR1 */
+    bool ignore_unused_terminals;
 } bb_config_opts_quirks;
 
 /**
  * Options parsed from config file(s)
  */
 typedef struct {
+    /* Options related to the keyboard */
+    bb_config_opts_keyboard keyboard;
     /* Options related to the theme */
     bb_config_opts_theme theme;
     /* Options related to input devices */

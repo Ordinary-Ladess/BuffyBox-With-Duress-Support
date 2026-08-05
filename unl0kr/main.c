@@ -4,55 +4,55 @@
  */
 
 
-#include "backends.h"
 #include "command_line.h"
 #include "config.h"
 #include "unl0kr.h"
-#include "terminal.h"
 
+#include "../shared/backends.h"
+#include "../shared/display.h"
+#include "../shared/force_feedback.h"
+#include "../shared/header.h"
 #include "../shared/indev.h"
+#include "../shared/keyboard.h"
 #include "../shared/log.h"
+#include "../shared/terminal.h"
 #include "../shared/theme.h"
 #include "../shared/themes.h"
 #include "../squeek2lvgl/sq2lv.h"
 
 #include "lvgl/lvgl.h"
 
-#include <pthread.h>
+#include <sys/epoll.h>
+#include <sys/reboot.h>
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include <sys/reboot.h>
-#include <sys/time.h>
-
+ul_cli_opts cli_opts;
+ul_config_opts conf_opts;
 
 /**
  * Static variables
  */
 
-ul_cli_opts cli_opts;
-ul_config_opts conf_opts;
+static bool is_alternate_theme = false;
+static bool is_password_obscured = true;
+static bool is_keyboard_hidden = false;
 
-bool is_alternate_theme = false;
-bool is_password_obscured = true;
-bool is_keyboard_hidden = false;
+static lv_obj_t *container;
+static lv_obj_t *keyboard;
 
-lv_obj_t *keyboard = NULL;
-
+static int32_t content_height_with_kb;
+static int32_t content_height_without_kb;
+static int32_t content_pad_bottom_with_kb;
+static int32_t content_pad_bottom_without_kb;
 
 /**
  * Static prototypes
  */
-
-/**
- * Function to invoke in the tick generation thread.
- *
- * @param args unused
-*/
-static void *tick_thread (void *args);
 
 /**
  * Handle LV_EVENT_CLICKED events from the theme toggle button.
@@ -119,12 +119,17 @@ static void toggle_keyboard_hidden(void);
 static void set_keyboard_hidden(bool is_hidden);
 
 /**
- * Callback for the keyboard's vertical slide in / out animation.
+ * Callback for the pad animation.
  *
- * @param obj keyboard widget
- * @param value y position
+ * @param obj container widget
+ * @param value the current value of the pad
  */
-static void keyboard_anim_y_cb(void *obj, int32_t value);
+static void pad_anim_cb(void *obj, int32_t value);
+
+/**
+ * Callback for buttons on a stylus.
+ */
+static void tablet_tool_button_cb();
 
 /**
  * Handle LV_EVENT_VALUE_CHANGED events from the keyboard layout dropdown.
@@ -194,20 +199,15 @@ static void shutdown(void);
  */
 static void sigaction_handler(int signum);
 
+/**
+ * Restore the terminal and exit from the program with EXIT_FAILURE.
+ */
+static void exit_failure();
+
 
 /**
  * Static functions
  */
-
-
-static void *tick_thread (void *args) {
-    LV_UNUSED(args);
-    while (1) {
-        usleep(5 * 1000); /* Sleep for 5 millisecond */
-        lv_tick_inc(5); /* Tell LVGL that 5 milliseconds have elapsed */
-    }
-    return NULL;
-}
 
 static void toggle_theme_btn_clicked_cb(lv_event_t *event) {
     LV_UNUSED(event);
@@ -242,7 +242,7 @@ static void set_password_obscured(bool is_obscured) {
     lv_textarea_set_password_mode(textarea, is_obscured);
 }
 
-static void toggle_kb_btn_clicked_cb(lv_event_t *event) {   
+static void toggle_kb_btn_clicked_cb(lv_event_t *event) {
     LV_UNUSED(event);
     toggle_keyboard_hidden();
 }
@@ -254,22 +254,47 @@ static void toggle_keyboard_hidden(void) {
 
 static void set_keyboard_hidden(bool is_hidden) {
     if (!conf_opts.general.animations) {
-        lv_obj_set_y(keyboard, is_hidden ? lv_obj_get_height(keyboard) : 0);
+        lv_obj_set_height(container, is_hidden? content_height_without_kb : content_height_with_kb);
+        lv_obj_set_style_pad_bottom(container,
+            is_hidden? content_pad_bottom_without_kb : content_pad_bottom_with_kb, LV_PART_MAIN);
         return;
     }
 
     lv_anim_t keyboard_anim;
     lv_anim_init(&keyboard_anim);
-    lv_anim_set_var(&keyboard_anim, keyboard);
-    lv_anim_set_values(&keyboard_anim, is_hidden ? 0 : lv_obj_get_height(keyboard), is_hidden ? lv_obj_get_height(keyboard) : 0);
+    lv_anim_set_var(&keyboard_anim, container);
+    lv_anim_set_exec_cb(&keyboard_anim, (lv_anim_exec_xcb_t) lv_obj_set_height);
     lv_anim_set_path_cb(&keyboard_anim, lv_anim_path_ease_out);
-    lv_anim_set_time(&keyboard_anim, 500);
-    lv_anim_set_exec_cb(&keyboard_anim, keyboard_anim_y_cb);
+    lv_anim_set_duration(&keyboard_anim, 500);
+
+    lv_anim_set_values(&keyboard_anim,
+        is_hidden? content_height_with_kb : content_height_without_kb,
+        is_hidden? content_height_without_kb : content_height_with_kb);
+
     lv_anim_start(&keyboard_anim);
+
+    if (content_pad_bottom_with_kb != content_pad_bottom_without_kb) {
+        lv_anim_t pad_anim;
+        lv_anim_init(&pad_anim);
+        lv_anim_set_var(&pad_anim, container);
+        lv_anim_set_exec_cb(&pad_anim, pad_anim_cb);
+        lv_anim_set_path_cb(&pad_anim, lv_anim_path_ease_out);
+        lv_anim_set_duration(&pad_anim, 500);
+
+        lv_anim_set_values(&pad_anim,
+            is_hidden? content_pad_bottom_with_kb : content_pad_bottom_without_kb,
+            is_hidden? content_pad_bottom_without_kb : content_pad_bottom_with_kb);
+
+        lv_anim_start(&pad_anim);
+    }
 }
 
-static void keyboard_anim_y_cb(void *obj, int32_t value) {
-    lv_obj_set_y(obj, value);
+static void pad_anim_cb(void *obj, int32_t value) {
+    lv_obj_set_style_pad_bottom(obj, value, LV_PART_MAIN);
+}
+
+static void tablet_tool_button_cb() {
+    sq2lv_toggle_fourth_layer(keyboard);
 }
 
 static void layout_dropdown_value_changed_cb(lv_event_t *event) {
@@ -313,10 +338,12 @@ static void shutdown_mbox_declined_cb(lv_event_t *event) {
 static void keyboard_value_changed_cb(lv_event_t *event) {
     lv_obj_t *kb = lv_event_get_target(event);
 
-    uint16_t btn_id = lv_btnmatrix_get_selected_btn(kb);
-    if (btn_id == LV_BTNMATRIX_BTN_NONE) {
+    uint16_t btn_id = lv_buttonmatrix_get_selected_button(kb);
+    if (btn_id == LV_BUTTONMATRIX_BUTTON_NONE) {
         return;
     }
+
+    bbx_force_feedback_play();
 
     if (sq2lv_is_layer_switcher(kb, btn_id)) {
         sq2lv_switch_layer(kb, btn_id);
@@ -336,11 +363,11 @@ static void textarea_ready_cb(lv_event_t *event) {
 
 static void print_password_and_exit(lv_obj_t *textarea) {
     /* Print the password to STDOUT */
-    printf("%s\n", lv_textarea_get_text(textarea));
+    printf(cli_opts.newline? "%s\n" : "%s", lv_textarea_get_text(textarea));
 
     /* Clear the screen so that when the password field was unobscured, it cannot
      * leak via stale display buffers after we've exited */
-    lv_obj_t *rect = lv_obj_create(lv_scr_act());
+    lv_obj_t *rect = lv_obj_create(lv_screen_active());
     lv_obj_set_size(rect, LV_PCT(100), LV_PCT(100));
     lv_obj_set_pos(rect, 0, 0);
     lv_obj_set_style_bg_opa(rect, LV_OPA_COVER, LV_PART_MAIN);
@@ -358,8 +385,13 @@ static void shutdown(void) {
 
 static void sigaction_handler(int signum) {
     LV_UNUSED(signum);
-    ul_terminal_reset_current_terminal();
+    bbx_terminal_reset_current_terminal();
     exit(0);
+}
+
+static void exit_failure() {
+    bbx_terminal_reset_current_terminal();
+    exit(EXIT_FAILURE);
 }
 
 
@@ -372,21 +404,23 @@ int main(int argc, char *argv[]) {
     ul_cli_parse_opts(argc, argv, &cli_opts);
 
     /* Set up log level */
-    if (cli_opts.verbose) {
+    if (cli_opts.common.verbose) {
         bbx_log_set_level(BBX_LOG_LEVEL_VERBOSE);
     }
 
     /* Announce ourselves */
-    bbx_log(BBX_LOG_LEVEL_VERBOSE, "unl0kr %s", UL_VERSION);
+    bbx_log(BBX_LOG_LEVEL_VERBOSE, "unl0kr %s", PROJECT_VERSION);
 
     /* Parse config files */
     ul_config_init_opts(&conf_opts);
+    ul_config_parse_file("/usr/share/unl0kr/unl0kr.conf", &conf_opts);
+    ul_config_parse_directory("/usr/share/unl0kr/unl0kr.conf.d", &conf_opts);
     ul_config_parse_file("/etc/unl0kr.conf", &conf_opts);
     ul_config_parse_directory("/etc/unl0kr.conf.d", &conf_opts);
     ul_config_parse_files(cli_opts.config_files, cli_opts.num_config_files, &conf_opts);
 
     /* Prepare current TTY and clean up on termination */
-    ul_terminal_prepare_current_terminal(!conf_opts.quirks.terminal_prevent_graphics_mode, !conf_opts.quirks.terminal_allow_keyboard_input);
+    bbx_terminal_prepare_current_terminal(!conf_opts.quirks.terminal_prevent_graphics_mode, !conf_opts.quirks.terminal_allow_keyboard_input);
     struct sigaction action;
     memset(&action, 0, sizeof(action));
     action.sa_handler = sigaction_handler;
@@ -397,55 +431,41 @@ int main(int argc, char *argv[]) {
     lv_init();
     lv_log_register_print_cb(bbx_log_print_cb);
 
-    /* Start the tick thread */
-    pthread_t ticker;
-    pthread_create(&ticker, NULL, tick_thread, NULL);
+    /* Populate display config */
+    bbx_display_config_t display_config = {
+        .hor_res = cli_opts.common.hor_res,
+        .ver_res = cli_opts.common.ver_res,
+        .x_offset = cli_opts.common.x_offset,
+        .y_offset = cli_opts.common.y_offset,
+        .dpi = cli_opts.common.dpi,
+        .fbdev_force_refresh = conf_opts.quirks.fbdev_force_refresh
+    };
 
-    /* Initialise display */
-    lv_display_t *disp = NULL;
-    switch (conf_opts.general.backend) {
-#if LV_USE_LINUX_FBDEV
-    case UL_BACKENDS_BACKEND_FBDEV:
-        bbx_log(BBX_LOG_LEVEL_VERBOSE, "Using framebuffer backend");
-        disp = lv_linux_fbdev_create();
-        lv_linux_fbdev_set_file(disp, "/dev/fb0");
-        if (conf_opts.quirks.fbdev_force_refresh) {
-            lv_linux_fbdev_set_force_refresh(disp, true);
-        }
-        break;
-#endif /* LV_USE_LINUX_FBDEV */
-#if LV_USE_LINUX_DRM
-    case UL_BACKENDS_BACKEND_DRM:
-        bbx_log(BBX_LOG_LEVEL_VERBOSE, "Using DRM backend");
-        disp = lv_linux_drm_create();
-        lv_linux_drm_set_file(disp, "/dev/dri/card0", -1);
-        break;
-#endif /* LV_USE_LINUX_DRM */
-    default:
-        bbx_log(BBX_LOG_LEVEL_ERROR, "Unable to find suitable backend");
-        exit(EXIT_FAILURE);
+    /* Initialize display */
+    lv_display_t *disp = bbx_display_create(conf_opts.general.backend, &display_config);
+    if (!disp) {
+        exit_failure();
     }
 
-    /* Override display properties with command line options if necessary */
-    lv_display_set_offset(disp, cli_opts.x_offset, cli_opts.y_offset);
-    if (cli_opts.hor_res > 0 || cli_opts.ver_res > 0) {
-        lv_display_set_physical_resolution(disp, lv_disp_get_hor_res(disp), lv_disp_get_ver_res(disp));
-        lv_display_set_resolution(disp, cli_opts.hor_res, cli_opts.ver_res);
-    }
-    if (cli_opts.dpi > 0) {
-        lv_display_set_dpi(disp, cli_opts.dpi);
+    int fd_epoll = epoll_create1(EPOLL_CLOEXEC);
+    if (fd_epoll == -1) {
+        bbx_log(BBX_LOG_LEVEL_ERROR, "epoll_create1() is failed");
+        exit_failure();
     }
 
-    /* Store final display resolution for convenient later access */
-    const uint32_t hor_res = lv_disp_get_hor_res(disp);
-    const uint32_t ver_res = lv_disp_get_ver_res(disp);
+    /* Attach input devices and start monitoring for new ones */
+    struct bbx_indev_opts input_config = {
+        .keymap = &conf_opts.hw_keyboard,
+        .keyboard = conf_opts.input.keyboard,
+        .pointer = conf_opts.input.pointer,
+        .touchscreen = conf_opts.input.touchscreen,
+        .force_feedback = conf_opts.keyboard.haptic_feedback
+    };
+    if (bbx_indev_init(fd_epoll, &input_config) == 0)
+        exit_failure();
 
-    /* Prepare for routing physical keyboard input into the textarea */
-    lv_group_t *keyboard_input_group = lv_group_create();
-    bbx_indev_set_keyboard_input_group(keyboard_input_group);
-
-    /* Start input device monitor and auto-connect available devices */
-    bbx_indev_start_monitor_and_autoconnect(conf_opts.input.keyboard, conf_opts.input.pointer, conf_opts.input.touchscreen);
+    bbx_indev_set_key_power_cb(shutdown);
+    bbx_indev_set_tablet_tool_button_cb(tablet_tool_button_cb);
 
     /* Hide the on-screen keyboard by default if a physical keyboard is connected */
     if (conf_opts.keyboard.autohide && bbx_indev_is_keyboard_connected()) {
@@ -455,81 +475,85 @@ int main(int argc, char *argv[]) {
     /* Initialise theme */
     set_theme(is_alternate_theme);
 
-    /* Prevent scrolling when keyboard is off-screen */
-    lv_obj_clear_flag(lv_scr_act(), LV_OBJ_FLAG_SCROLLABLE);
-
     /* Figure out a few numbers for sizing and positioning */
-    const int base_keyboard_height = ver_res > hor_res ? ver_res / 3 : ver_res / 2; /* Height for 4 rows */
-    const int keyboard_height = base_keyboard_height * 1.25; /* Add space for an extra top row */
-    const int padding = keyboard_height / 10;
-    const int textarea_container_max_width = LV_MIN(hor_res, ver_res);
+    const int32_t hor_res = lv_display_get_horizontal_resolution(disp);
+    const int32_t ver_res = lv_display_get_vertical_resolution(disp);
+    const int32_t keyboard_height = ver_res > hor_res ? ver_res / 2.5 : ver_res / 1.8; /* Height for 5 rows */
+    const int32_t padding = keyboard_height / 10;
+    const int32_t side_pad = (hor_res > ver_res ? (hor_res - ver_res) / 2 : 0) + padding;
 
-    /* Main flexbox */
-    lv_obj_t *container = lv_obj_create(lv_scr_act());
-    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_size(container, LV_PCT(100), ver_res - keyboard_height);
-    lv_obj_set_pos(container, 0, 0);
-    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+    /* Prevent scrolling when keyboard is off-screen */
+    lv_obj_t *screen = lv_screen_active();
+    lv_theme_apply(screen);
+    lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Header flexbox */
-    lv_obj_t *header = lv_obj_create(container);
+    /* Configure header */
+    bbx_header_config_t header_config;
+    bbx_header_init_config(&header_config);
+    header_config.theme_symbol = UL_SYMBOL_ADJUST;
+    header_config.dropdown_options = sq2lv_layout_short_names;
+
+    bbx_header_widgets_t header_widgets;
+    lv_obj_t *header = bbx_header_create(screen, &header_config, &header_widgets);
     lv_obj_add_flag(header, BBX_WIDGET_HEADER);
-    lv_theme_apply(header); /* Force re-apply theme after setting flag so that the widget can be identified */
-    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_size(header, LV_PCT(100), LV_SIZE_CONTENT);
 
-    /* Theme switcher button */
-    lv_obj_t *toggle_theme_btn = lv_btn_create(header);
-    lv_obj_add_event_cb(toggle_theme_btn, toggle_theme_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *toggle_theme_btn_label = lv_label_create(toggle_theme_btn);
-    lv_label_set_text(toggle_theme_btn_label, UL_SYMBOL_ADJUST);
-    lv_obj_center(toggle_theme_btn_label);
+    /* Add theme toggle to distinguish this widget type */
+    lv_obj_add_flag(header, BBX_WIDGET_HEADER);
+    lv_theme_apply(header);
 
-    /* Show / hide keyboard button */
-    lv_obj_t *toggle_kb_btn = lv_btn_create(header);
-    lv_obj_add_event_cb(toggle_kb_btn, toggle_kb_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *toggle_kb_btn_label = lv_label_create(toggle_kb_btn);
-    lv_label_set_text(toggle_kb_btn_label, LV_SYMBOL_KEYBOARD);
-    lv_obj_center(toggle_kb_btn_label);
+    /* Attach callbacks */
+    lv_obj_add_event_cb(header_widgets.theme_toggle_btn, toggle_theme_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(header_widgets.keyboard_toggle_btn, toggle_kb_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(header_widgets.layout_dropdown, layout_dropdown_value_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(header_widgets.shutdown_btn, shutdown_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
 
-    /* Keyboard layout dropdown */
-    lv_obj_t *layout_dropdown = lv_dropdown_create(header);
-    lv_dropdown_set_options(layout_dropdown, sq2lv_layout_short_names);
-    lv_obj_add_event_cb(layout_dropdown, layout_dropdown_value_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_set_width(layout_dropdown, 90);
+    lv_obj_update_layout(header);
+    content_height_without_kb = ver_res - lv_obj_get_height(header);
+    content_height_with_kb = content_height_without_kb - keyboard_height;
 
-    /* Spacer */
-    lv_obj_t *spacer = lv_obj_create(header);
-    lv_obj_set_height(spacer, 0);
-    lv_obj_set_flex_grow(spacer, 1);
+    /* Container for a message and an input field */
+    container = lv_obj_create(screen);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_size(container, LV_PCT(100), is_keyboard_hidden? content_height_without_kb : content_height_with_kb);
+    lv_obj_set_style_pad_top(container, 10, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(container, side_pad, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(container, side_pad, LV_PART_MAIN);
 
-    /* Shutdown button */
-    lv_obj_t *shutdown_btn = lv_btn_create(header);
-    lv_obj_add_event_cb(shutdown_btn, shutdown_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *shutdown_btn_label = lv_label_create(shutdown_btn);
-    lv_label_set_text(shutdown_btn_label, LV_SYMBOL_POWER);
-    lv_obj_center(shutdown_btn_label);
+    int32_t content_pad_row = 10;
 
-    /* Flexible spacer */
-    lv_obj_t *flexible_spacer = lv_obj_create(container);
-    lv_obj_set_size(flexible_spacer, LV_PCT(100), 0);
-    lv_obj_set_flex_grow(flexible_spacer, 1);
+    /* Message for a user */
+    lv_obj_t *message_label = NULL;
+    if (cli_opts.message) {
+        lv_obj_set_style_pad_row(container, content_pad_row, LV_PART_MAIN);
+
+        /* lv_label does not support wrapping and scrolling simultaneously,
+           so we place it in a scrollable container */
+        lv_obj_t *message_container = lv_obj_create(container);
+        lv_obj_set_width(message_container, LV_PCT(100));
+        lv_obj_set_flex_flow(message_container, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_grow(message_container, 1);
+
+        lv_obj_t *message_spacer = lv_obj_create(message_container);
+        lv_obj_set_width(message_spacer, 0);
+        lv_obj_set_flex_grow(message_spacer, 1);
+
+        message_label = lv_label_create(message_container);
+        lv_obj_set_size(message_label, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_label_set_text(message_label, cli_opts.message);
+    }
 
     /* Textarea flexbox */
     lv_obj_t *textarea_container = lv_obj_create(container);
     lv_obj_set_size(textarea_container, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_max_width(textarea_container, textarea_container_max_width, LV_PART_MAIN);
     lv_obj_set_flex_flow(textarea_container, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(textarea_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_left(textarea_container, padding, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(textarea_container, padding, LV_PART_MAIN);
 
     /* Textarea */
     lv_obj_t *textarea = lv_textarea_create(textarea_container);
     lv_textarea_set_one_line(textarea, true);
-    lv_textarea_set_password_mode(textarea, true);
+    lv_textarea_set_password_mode(textarea, conf_opts.textarea.obscured);
+    is_password_obscured = conf_opts.textarea.obscured;
     lv_textarea_set_password_bullet(textarea, conf_opts.textarea.bullet);
     lv_textarea_set_placeholder_text(textarea, "Enter password...");
     lv_obj_add_event_cb(textarea, textarea_ready_cb, LV_EVENT_READY, NULL);
@@ -539,60 +563,76 @@ int main(int argc, char *argv[]) {
     /* Route physical keyboard input into textarea */
     lv_group_add_obj(keyboard_input_group, textarea);
 
+    lv_obj_update_layout(textarea);
+    const int32_t textarea_height = lv_obj_get_height(textarea);
+
     /* Reveal / obscure password button */
-    lv_obj_t *toggle_pw_btn = lv_btn_create(textarea_container);
-    const int textarea_height = lv_obj_get_height(textarea);
+    lv_obj_t *toggle_pw_btn = lv_button_create(textarea_container);
     lv_obj_set_size(toggle_pw_btn, textarea_height, textarea_height);
     lv_obj_t *toggle_pw_btn_label = lv_label_create(toggle_pw_btn);
     lv_obj_center(toggle_pw_btn_label);
     lv_label_set_text(toggle_pw_btn_label, LV_SYMBOL_EYE_OPEN);
     lv_obj_add_event_cb(toggle_pw_btn, toggle_pw_btn_clicked_cb, LV_EVENT_CLICKED, NULL);
 
-    /* Set header button size to match dropdown (for some reason the height is only available here) */
-    const int dropwdown_height = lv_obj_get_height(layout_dropdown);
-    lv_obj_set_size(toggle_theme_btn, dropwdown_height, dropwdown_height);
-    lv_obj_set_size(toggle_kb_btn, dropwdown_height, dropwdown_height);
-    lv_obj_set_size(shutdown_btn, dropwdown_height, dropwdown_height);
+    /* The bottom pad is used to center content when the keyboard is hidden */
+    content_pad_bottom_with_kb = padding;
 
-    /* Fixed spacer */
-    lv_obj_t *fixed_spacer = lv_obj_create(container);
-    lv_obj_set_size(fixed_spacer, LV_PCT(100), padding);
+    int32_t content_native_height = textarea_height;
+    if (cli_opts.message) {
+        lv_obj_update_layout(message_label);
+        content_native_height += content_pad_row + lv_obj_get_height(message_label);
+    }
+
+    content_pad_bottom_without_kb = (content_height_without_kb - content_native_height) / 2;
+    if (content_pad_bottom_without_kb < content_pad_bottom_with_kb)
+        content_pad_bottom_without_kb = content_pad_bottom_with_kb;
+
+    lv_obj_set_style_pad_bottom(container, is_keyboard_hidden? content_pad_bottom_without_kb : content_pad_bottom_with_kb, LV_PART_MAIN);
 
     /* Keyboard (after textarea / label so that key popovers are not drawn over) */
-    keyboard = lv_keyboard_create(lv_scr_act());
-    lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-    lv_keyboard_set_textarea(keyboard, textarea);
-    uint32_t num_keyboard_events = lv_obj_get_event_count(keyboard);
-    for(uint32_t i = 0; i < num_keyboard_events; ++i) {
-        if(lv_event_dsc_get_cb(lv_obj_get_event_dsc(keyboard, i)) == lv_keyboard_def_event_cb) {
-            lv_obj_remove_event(keyboard, i);
-            break;
-        }
-    }
-    lv_obj_add_event_cb(keyboard, keyboard_value_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(keyboard, keyboard_ready_cb, LV_EVENT_READY, NULL);
-    lv_obj_set_pos(keyboard, 0, is_keyboard_hidden ? keyboard_height : 0);
-    lv_obj_set_size(keyboard, hor_res, keyboard_height);
-    bbx_theme_prepare_keyboard(keyboard);
+    bbx_keyboard_config_t keyboard_config;
+    bbx_keyboard_init_config(&keyboard_config);
+    keyboard_config.layout_id = (int)conf_opts.keyboard.layout_id;
+    keyboard_config.height = keyboard_height;
+    keyboard_config.popovers = conf_opts.keyboard.popovers;
+    keyboard_config.value_changed_callback = keyboard_value_changed_cb;
+    keyboard_config.ready_callback = keyboard_ready_cb;
 
-    /* Apply textarea options */
-    set_password_obscured(conf_opts.textarea.obscured);
+    keyboard = bbx_keyboard_create(screen, textarea, &keyboard_config);
 
     /* Apply keyboard options */
     sq2lv_switch_layout(keyboard, conf_opts.keyboard.layout_id);
-    lv_dropdown_set_selected(layout_dropdown, conf_opts.keyboard.layout_id);
-    if (conf_opts.keyboard.popovers) {
-        lv_keyboard_set_popovers(keyboard, true);
-    }
+    lv_dropdown_set_selected(header_widgets.layout_dropdown, conf_opts.keyboard.layout_id);
 
     /* Periodically run timer / task handler */
     uint32_t timeout = conf_opts.general.timeout * 1000; /* ms */
     while(1) {
-        if (!timeout || lv_disp_get_inactive_time(NULL) < timeout) {
-            lv_timer_periodic_handler();
-        } else if (timeout) {
-            shutdown();
+        uint32_t time_till_next = lv_timer_handler();
+
+        if (timeout != 0) {
+            uint32_t time_idle = lv_display_get_inactive_time(NULL);
+            if (time_idle >= timeout)
+                shutdown();
+
+            uint32_t time_till_shutdown = timeout - time_idle;
+            if (time_till_shutdown < time_till_next)
+                time_till_next = time_till_shutdown;
         }
+
+        struct epoll_event event;
+        int r = epoll_wait(fd_epoll, &event, 1, time_till_next);
+        if (r == 0)
+            continue;
+        if (r > 0) {
+            __extension__ void (*handler)() = event.data.ptr;
+            handler();
+            continue;
+        }
+        if (errno == EINTR)
+            continue;
+
+        bbx_log(BBX_LOG_LEVEL_ERROR, "epoll_wait() is failed");
+        exit_failure();
     }
 
     return 0;

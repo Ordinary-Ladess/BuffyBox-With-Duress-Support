@@ -1,5 +1,49 @@
 #!/bin/bash
 
+function run_unl0kr_async() {
+    local log=$1
+    local conf=$2
+
+    ./_build/unl0kr/unl0kr -v -C "$conf" > "$log" 2>&1 &
+    pid=$!
+    sleep 3
+
+    kill -9 $pid
+    wait $pid > /dev/null 2>&1
+}
+
+function run_unl0kr_sync() {
+    local log=$1
+    shift
+    local conf=$2
+    shift
+    local args=$@
+
+    ./_build/unl0kr/unl0kr -v -C "$conf" $@ > "$log" 2>&1
+}
+
+function run_buffyboard_async() {
+    local log=$1
+    local conf=$2
+
+    ./_build/buffyboard/buffyboard -v -C "$conf" > "$log" 2>&1 &
+    pid=$!
+    sleep 3
+
+    kill -9 $pid
+    wait $pid > /dev/null 2>&1
+}
+
+function run_buffyboard_sync() {
+    local log=$1
+    shift
+    local conf=$2
+    shift
+    local args=$@
+
+    ./_build/buffyboard/buffyboard -v -C "$conf" $@ > "$log" 2>&1
+}
+
 function info() {
     echo -e "[Info] $1"
 }
@@ -14,8 +58,10 @@ function ok() {
 
 function run_script() {
     info "Executing $1"
-    "$1"
+    rc=0
+    "$1" || rc=1
     echo
+    return $rc
 }
 
 function read_version_from_meson() {
@@ -23,5 +69,5 @@ function read_version_from_meson() {
 }
 
 function read_version_from_changelog() {
-    grep "^## [[:digit:]]" "$root/../../CHANGELOG.md" | head -n1 | grep -o "[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+"
+    grep "^## [[:digit:]]" "$root/../CHANGELOG.md" | head -n1 | grep -o "[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+"
 }

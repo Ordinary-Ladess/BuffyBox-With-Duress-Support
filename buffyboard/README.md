@@ -13,7 +13,7 @@ Buffyboard uses [LVGL] for input processing and rendering. Key events are forwar
 
 # Status
 
-We are en route to v1 which aims at providing a useable, visually pleasant application including [fbkeyboard]'s most essential features. For details about the current status, see the [v1 milestone]. You may also browse the full list of [open issues] to get an idea of what's planned beyond v1.
+We are en route to v1 which aims at providing a useable, visually pleasant application including [fbkeyboard]'s most essential features. You may browse the full list of [open issues] to get an idea of what's planned.
 
 Here are a few highlights of what already works:
 
@@ -44,6 +44,8 @@ Mandatory arguments to long options are mandatory for short options too.
   -C, --config-override     Path to a config override file. Can be supplied
                             multiple times. Config files are merged in the
                             following order:
+                            * /usr/share/buffyboard/buffyboard.conf
+                            * /usr/share/buffyboard/buffyboard.conf.d/* (alphabetically)
                             * /etc/buffyboard.conf
                             * /etc/buffyboard.conf.d/* (alphabetically)
                             * Override files (in supplied order)
@@ -77,30 +79,6 @@ For an example configuration file, see [buffyboard.conf].
 - evdev kernel module
 - uinput kernel module
 
-## Building & running
-
-Some of buffyboard's dependencies are included as git submodules in this repository. You can clone the repository and initialise the submodules with
-
-```
-$ git clone https://gitlab.com/cherrypicker/buffyboard.git
-$ cd buffyboard
-$ git submodule init
-$ git submodule update
-```
-
-When pulling changes from the remote later, either use `git pull --recurse-submodules` or manually run `git submodule update` as needed after pulling.
-
-Once you have the sources, you can build the app and run it in a VT. Unless your user account has special privileges, `sudo` will be needed to access input device files.
-
-```
-$ meson _build
-$ meson compile -C _build
-$ sudo chvt 2
-$ sudo ./_build/buffyboard
-```
-
-With meson <0.55 use `ninja` instead of `meson compile`.
-
 ## Keyboard layouts
 
 Buffyboard uses [squeekboard layouts] converted to C via [squeek2lvgl]. To regenerate the layouts, ensure that you have pipenv installed (e.g. via `pip install --user pipenv`) and then run
@@ -109,7 +87,15 @@ Buffyboard uses [squeekboard layouts] converted to C via [squeek2lvgl]. To regen
 $ ./regenerate-layouts.sh
 ```
 
-from the root of the repository.
+## Generating screenshots
+
+To generate screenshots in a variety of common sizes, install [fbcat], build buffyboard and then run
+
+```
+$ sudo ./regenerate-screenshots ../_build/unl0kr/buffyboard
+```
+
+where `../_build/unl0kr/buffyboard` is the location of the buffyboard binary.
 
 # Acknowledgements
 
@@ -127,6 +113,7 @@ Buffyboard was inspired by [fbkeyboard].
 [LVGL]: https://lvgl.io
 [arrow-alt-circle-up]: https://fontawesome.com/v5.15/icons/arrow-alt-circle-up?style=solid
 [buffyboard.conf]: ./buffyboard.conf
+[fbcat]: https://github.com/jwilk/fbcat
 [fbkeyboard]: https://github.com/bakonyiferenc/fbkeyboard
 [inih]: https://github.com/benhoyt/inih
 [libinput]: https://gitlab.freedesktop.org/libinput/libinput
@@ -134,10 +121,9 @@ Buffyboard was inspired by [fbkeyboard].
 [lv_port_linux_frame_buffer]: https://github.com/lvgl/lv_port_linux_frame_buffer
 [lv_sim_emscripten]: https://github.com/lvgl/lv_sim_emscripten/blob/master/mouse_cursor_icon.c
 [lvgl]: https://github.com/lvgl/lvgl
-[open issues]: https://gitlab.com/cherrypicker/buffyboard/-/issues
+[open issues]: https://gitlab.postmarketos.org/postmarketOS/buffybox/-/issues
 [screenshots]: ./screenshots
-[squeek2lvgl]: https://gitlab.com/cherrypicker/squeek2lvgl]
+[squeek2lvgl]: ../squeek2lvgl
 [squeekboard layouts]: https://gitlab.gnome.org/World/Phosh/squeekboard/-/blob/master/data/keyboards
 [squeekboard's US terminal layout]: https://gitlab.gnome.org/World/Phosh/squeekboard/-/blob/master/data/keyboards/terminal/us.yaml
 [squeekboard]: https://gitlab.gnome.org/World/Phosh/squeekboard/-/tree/master
-[v1 milestone]: https://gitlab.com/cherrypicker/buffyboard/-/milestones/1

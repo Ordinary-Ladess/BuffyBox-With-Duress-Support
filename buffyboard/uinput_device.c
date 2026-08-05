@@ -6,20 +6,30 @@
 
 #include "uinput_device.h"
 
+#include "../shared/log.h"
+
+#include <linux/uinput.h>
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
-#include <linux/uinput.h>
-
+#if UINPUT_VERSION < 5
+#error Buffyboard does not have support for uinput < 5
+#endif
 
 /**
  * Static variables
  */
 
 static int fd = -1;
-struct input_event event;
+static struct input_event events[2] = {
+    { .type = EV_KEY },
+    { .type = EV_SYN,
+      .code = SYN_REPORT,
+    }
+};
 
 
 /**
@@ -27,42 +37,28 @@ struct input_event event;
  */
 
 /**
- * Emit an event on the device.
- * @param type event type
+ * Emit a key event on the device.
  * @param code event code
  * @param value event value
  * @return true if emitting the event was succesful, false otherwise
  */
-static bool uinput_device_emit(int type, int code, int value);
-
-/**
- * Emit a synchronisation event on the device
- * @return true if emitting the event was succesful, false otherwise
- */
-static bool uinput_device_synchronise();
+static bool emit_key(int code, int value);
 
 
 /**
  * Static functions
  */
 
-static bool uinput_device_emit(int type, int code, int value) {
-    event.type = type;
-    event.code = code;
-    event.value = value;
-    event.input_event_sec = 0;
-    event.input_event_usec = 0;
+static bool emit_key(int code, int value) {
+    events[0].code = code;
+    events[0].value = value;
 
-    if (write(fd, &event, sizeof(event)) != sizeof(event)) {
-        perror("Could not emit event");
+    if (write(fd, events, sizeof(events)) != sizeof(events)) {
+        bbx_log(BBX_LOG_LEVEL_WARNING, "Could not emit events");
         return false;
     }
 
     return true;
-}
-
-static bool uinput_device_synchronise() {
-    return uinput_device_emit(EV_SYN, SYN_REPORT, 0);
 }
 
 
@@ -70,57 +66,48 @@ static bool uinput_device_synchronise() {
  * Public functions
  */
 
-bool bb_uinput_device_init(const int * const scancodes, int num_scancodes) {
+bool bb_uinput_device_init(const int * const keycodes, int num_keycodes) {
     fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
-	if (fd < 0) {
-		perror("Could not open /dev/uinput");
-		return false;
-	}
+    if (fd < 0) {
+        bbx_log(BBX_LOG_LEVEL_ERROR, "Could not open /dev/uinput");
+        return false;
+    }
 
-	if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) {
-		perror("Could not set EVBIT for EV_KEY");
-		return false;
-	}
+    if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) {
+        bbx_log(BBX_LOG_LEVEL_ERROR, "Could not set EVBIT for EV_KEY");
+        return false;
+    }
 
-	if (ioctl(fd, UI_SET_EVBIT, EV_SYN) < 0) {
-		perror("Could not set EVBIT for EV_SYN");
-		return false;
-	}
-
-	for (int i = 0; i < num_scancodes; ++i) {
-        if (ioctl(fd, UI_SET_KEYBIT, scancodes[i]) < 0) {
-            perror("Could not set KEYBIT");
+    for (int i = 0; i < num_keycodes; ++i) {
+        if (ioctl(fd, UI_SET_KEYBIT, keycodes[i]) < 0) {
+            bbx_log(BBX_LOG_LEVEL_ERROR, "Could not set KEYBIT");
             return false;
         }
     }
 
-    struct uinput_user_dev device;
-	memset(&device, 0, sizeof(device));
-    strcpy(device.name, "buffyboard");
-	device.id.bustype = BUS_USB;
-	device.id.vendor = 1;
-	device.id.product = 1;
-	device.id.version = 1;
+    static_assert(sizeof("buffyboard") <= UINPUT_MAX_NAME_SIZE);
 
-	if (ioctl(fd, UI_DEV_SETUP, &device) < 0) {
-		perror("Could not set up uinput device");
-		return false;
-	}
+    struct uinput_setup usetup = { 0 };
+    usetup.id.bustype = BUS_VIRTUAL;
+    strcpy(usetup.name, "buffyboard");
 
-	if (ioctl(fd, UI_DEV_CREATE) < 0) {
-		perror("Could not create uinput device");
-		return false;
-	}
+    if (ioctl(fd, UI_DEV_SETUP, &usetup) < 0) {
+        bbx_log(BBX_LOG_LEVEL_ERROR, "Could not set up uinput device");
+        return false;
+    }
 
-    memset(&event, 0, sizeof(event));
+    if (ioctl(fd, UI_DEV_CREATE) < 0) {
+        bbx_log(BBX_LOG_LEVEL_ERROR, "Could not create uinput device");
+        return false;
+    }
 
     return true;
 }
 
-bool bb_uinput_device_emit_key_down(int scancode) {
-    return uinput_device_emit(EV_KEY, scancode, 1) && uinput_device_synchronise();
+bool bb_uinput_device_emit_key_down(int keycode) {
+    return emit_key(keycode, 1);
 }
 
-bool bb_uinput_device_emit_key_up(int scancode) {
-    return uinput_device_emit(EV_KEY, scancode, 0) && uinput_device_synchronise();
+bool bb_uinput_device_emit_key_up(int keycode) {
+    return emit_key(keycode, 0);
 }
