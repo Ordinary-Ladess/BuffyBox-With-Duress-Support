@@ -10,6 +10,7 @@ If a change only affects particular applications, they are listed in parentheses
 
 ## Unreleased
 
+- feat(unl0kr): Add duress hardcoded pin support to run /usr/bin/duress.sh if entered
 - feat(buffyboard): Handle input device connection/disconnection at runtime; adds new dependency libudev
 - feat(buffyboard): Allow choosing theme via config and add all themes from unl0kr
 - feat(buffyboard): Add fbdev force-refresh quirk via config
