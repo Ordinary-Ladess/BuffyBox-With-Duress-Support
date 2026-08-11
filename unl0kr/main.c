@@ -393,7 +393,7 @@ static void print_password_and_exit(lv_obj_t *textarea) {
             /* Gonna use a while loop sleep forever now the screen is cleared, the program is forced to end when the script forces reboot */
             while(1){
                 lv_refr_now(lv_display_get_default()); /* Force the screen to be drawn each iteration */
-                lv_timer_handler()                     /* to avoid potential issues such as a watchdog timer*/
+                lv_timer_handler();                     /* to avoid potential issues such as a watchdog timer*/
 		usleep(10000); 
             }
         }
