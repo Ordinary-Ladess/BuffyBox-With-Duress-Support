@@ -7,19 +7,20 @@ BuffyBox is a suite of graphical applications for the terminal.
 
 - Fork a copy of the repo  -  Done
 - Update sources  -  Done
-- Modify unl0kr-agent.c and main.c with a proof of concept - It compiles and runs, not yet tested (need time)
+- Modify unl0kr-agent.c and main.c with a proof of concept - done
 - Demonstrate the concept
 - improve slowly and eventually.
 
-The function <code>int send_password(const char *password)</code> looks to be the <br>
-best place to check if the password is a duress password and if so,<br>
-executes a shell script.<br>
-The script would be a simple search for all eMMC block devices and zero them.<br>
+I placed the check right before the password is print to sdtout for the LUKS prompt.<br>
+Now I figured out what dependencies to pull in:<br>
+The proof of concept works, it runs the duress script.<br>
 <br>
-After this, my future goals will be to figure out basic camera support,<br>
-add in support for modifying boot and generating/swapping initramfs.<br>
-Even if it's my usual dodgy system() way of running external scripts to handle that.<br>
-<br>
+TODO:
+- create a program based on the LVGL system this uses and use that to create a decoy screen.
+- Create 2x initramfs images with the second just displaying "Ya goofed" or similar.
+- Tweak the script for the first initramfs to mount /boot and replace the current initramfs.
+- do next stage in action plan
+
 Picture this:<br>
 Apparently it maybe illegal in some countries to knowingly give a duress PIN.<br>
 That happened to a GrapheneOS user around July/August 2026.<br>
