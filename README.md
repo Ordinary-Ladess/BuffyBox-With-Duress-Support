@@ -6,9 +6,8 @@ BuffyBox is a suite of graphical applications for the terminal.
 ## Action Plan
 
 - Fork a copy of the repo  -  Done
-- find time to work on this, lol
-- Update sources
-- Modify unl0kr-agent.c with a proof of concept
+- Update sources  -  Done
+- Modify unl0kr-agent.c and main.c with a proof of concept - It compiles and runs, not yet tested (need time)
 - Demonstrate the concept
 - improve slowly and eventually.
 
